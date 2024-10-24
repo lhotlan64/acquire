@@ -30,6 +30,11 @@ from dissect.util.stream import RunlistStream
 
 from acquire.collector import Collector, get_full_formatted_report, get_report_summary
 from acquire.dynamic.windows.named_objects import NamedObjectType
+from acquire.dynamic.windows.tasklist import (
+    Process,
+    format_active_processes_as_csv,
+    get_active_process_list,
+)
 from acquire.esxi import esxi_memory_context_manager
 from acquire.gui import GUI
 from acquire.hashes import (
@@ -388,10 +393,22 @@ class Netstat(Module):
 @local_module
 class WinProcesses(Module):
     DESC = "Windows process list"
-    SPEC = [
-        ("command", (["tasklist", "/V", "/fo", "csv"], "win-processes")),
-    ]
     EXEC_ORDER = ExecutionOrder.BOTTOM
+
+    @classmethod
+    def _run(cls, target: Target, cli_args: argparse.Namespace, collector: Collector) -> None:
+        processes: list[Process] = get_active_process_list()
+        output = format_active_processes_as_csv(processes)
+
+        output_base = (
+            fsutil.join(collector.base, collector.COMMAND_OUTPUT_BASE)
+            if collector.base
+            else collector.COMMAND_OUTPUT_BASE
+        )
+        full_output_path = fsutil.join(output_base, "win-processes")
+
+        collector.output.write_bytes(full_output_path, output.encode())
+        collector.report.add_command_collected(cls.__name__, ["tasklist", "/V", "/fo", "csv"])
 
 
 @register_module("--win-proc-env")
