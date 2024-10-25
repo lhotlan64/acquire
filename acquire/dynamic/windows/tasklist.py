@@ -415,8 +415,3 @@ def format_active_processes_as_csv(processes: list[Process]) -> str:
     rows = "\n".join(formatter(process) for process in processes)
 
     return header + "\n" + rows
-
-
-if __name__ == "__main__":
-    asd = get_active_process_list()
-    [print(p) for p in asd]
