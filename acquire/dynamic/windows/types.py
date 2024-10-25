@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ctypes
 from ctypes.wintypes import (
+    ATOM,
     BOOL,
     DWORD,
     HANDLE,
@@ -10,9 +11,12 @@ from ctypes.wintypes import (
     LPWSTR,
     PHANDLE,
     PULONG,
+    RECT,
+    UINT,
     ULONG,
     USHORT,
     WCHAR,
+    WORD,
 )
 from enum import IntEnum
 
@@ -21,6 +25,11 @@ NTSTATUS = ULONG
 NULL = None
 
 ULONG_PTR = ctypes.c_size_t
+SIZE_T = ctypes.c_size_t
+
+HWND = HANDLE
+LPARAM = ULONG_PTR
+WPARAM = ULONG_PTR
 
 
 class ProcessToken(IntEnum):
@@ -70,6 +79,29 @@ class OBJECT_INFORMATION_CLASS(IntEnum):
 
 class FILE_INFORMATION_CLASS(IntEnum):
     FileNameInformation = 9
+
+
+class SID_NAME_USE(IntEnum):
+    USER = 1
+    GROUP = 2
+    DOMAIN = 3
+    ALIAS = 4
+    WELLKNOWNGROUP = 5
+    DELETEDACCOUNT = 6
+    INVALID = 7
+    UNKNOWN = 8
+    COMPUTER = 9
+    LABEL = 10
+    LOGONSESSION = 11
+
+
+class PROCESSINFOCLASS(IntEnum):
+    PROCESSBASICINFORMATION = 0
+    PROCESSVMCOUNTERS = 3
+    PROCESSTIMES = 4
+    PROCESSSESSIONINFORMATION = 24
+    PROCESSIMAGEFILENAME = 27
+    PROCESSWINDOWINFORMATION = 50
 
 
 class SYSTEM_HANDLE_TABLE_ENTRY_INFO_EX(ctypes.Structure):
@@ -236,38 +268,227 @@ class OBJECT_DIRECTORY_INFORMATION(ctypes.Structure):
         return str(self.TypeName)
 
 
+class WTS_SESSION_INFOW(ctypes.Structure):
+    _fields_ = [
+        ("SessionId", DWORD),
+        ("Padding", DWORD),
+        ("pWinStationName", LPWSTR),
+        ("State", DWORD),
+    ]
+
+
+class SID_AND_ATTRIBUTES(ctypes.Structure):
+    _fields_ = [
+        ("Sid", LPVOID),
+        ("Attributes", DWORD),
+    ]
+
+
+class TOKEN_USER(ctypes.Structure):
+    _fields_ = [
+        ("User", SID_AND_ATTRIBUTES),
+    ]
+
+
+class LSA_OBJECT_ATTRIBUTES(ctypes.Structure):
+    _fields_ = [
+        ("Length", ULONG),
+        ("Padding", ULONG),
+        ("RootDirectory", HANDLE),
+        ("ObjectName", ctypes.POINTER(UNICODE_STRING)),
+        ("Attributes", ULONG),
+        ("Padding2", ULONG),
+        ("SecurityDescriptor", LPVOID),
+        ("SecurityQualityOfService", LPVOID),
+    ]
+
+
+class PROCESS_BASIC_INFORMATION(ctypes.Structure):
+    _fields_ = [
+        ("ExitStatus", NTSTATUS),
+        ("PebBaseAddress", LPVOID),
+        ("AffinityMask", ULONG_PTR),
+        ("BasePriority", ULONG),
+        ("UniqueProcessId", HANDLE),
+        ("InheritedFromUniqueProcessId", HANDLE),
+    ]
+
+
+class PROCESS_EXTENDED_BASIC_INFORMATION(ctypes.Structure):
+    _fields_ = [
+        ("Size", SIZE_T),
+        ("BasicInfo", PROCESS_BASIC_INFORMATION),
+        ("Flags", ULONG),  # of interest is IsFrozen (bit 4)
+    ]
+
+
+class PROCESS_SESSION_INFORMATION(ctypes.Structure):
+    _fields_ = [
+        ("SessionId", ULONG),
+    ]
+
+
+class LSA_TRANSLATED_NAME(ctypes.Structure):
+    _fields_ = [
+        ("Use", ULONG),
+        ("Name", UNICODE_STRING),
+        ("DomainIndex", ULONG),
+    ]
+
+
+PLSA_TRANSLATED_NAME = ctypes.POINTER(LSA_TRANSLATED_NAME)
+
+
+class LSA_TRUST_INFORMATION(ctypes.Structure):
+    _fields_ = [
+        ("Name", UNICODE_STRING),
+        ("Sid", LPVOID),
+    ]
+
+
+class LSA_REFERENCED_DOMAIN_LIST(ctypes.Structure):
+    _fields_ = [
+        ("Entries", ULONG),
+        ("Domains", ctypes.POINTER(LSA_TRUST_INFORMATION) * 1),
+    ]
+
+
+PLSA_REFERENCED_DOMAIN_LIST = ctypes.POINTER(LSA_REFERENCED_DOMAIN_LIST)
+
+
+class LARGE_INTEGER(ctypes.Structure):
+    _fields_ = [
+        ("LowPart", DWORD),
+        ("HighPart", DWORD),
+    ]
+
+
+class CLIENT_ID(ctypes.Structure):
+    _fields_ = [
+        ("UniqueProcess", HANDLE),
+        ("UniqueThread", HANDLE),
+    ]
+
+
+class SYSTEM_THREAD_INFORMATION(ctypes.Structure):
+    _fields_ = [
+        ("KernelTime", LARGE_INTEGER),
+        ("UserTime", LARGE_INTEGER),
+        ("CreateTime", LARGE_INTEGER),
+        ("WaitTime", ULONG),
+        ("StartAddress", LPVOID),
+        ("ClientId", CLIENT_ID),
+        ("Priority", ULONG),
+        ("BasePriority", ULONG),
+        ("ContextSwitches", ULONG),
+        ("ThreadState", ULONG),
+        ("WaitReason", ULONG),
+    ]
+
+
+class SYSTEM_PROCESS_INFORMATION(ctypes.Structure):
+    _fields_ = [
+        ("NextEntryOffset", ULONG),
+        ("NumberOfThreads", ULONG),
+        ("WorkingSetPrivateSize", LARGE_INTEGER),
+        ("HardFaultCount", ULONG),
+        ("NumberOfThreadsHighWatermark", ULONG),
+        ("CycleTime", ULONG),
+        ("Padding", ULONG),  # add padding to fix structure alignment
+        ("CreateTime", LARGE_INTEGER),
+        ("UserTime", LARGE_INTEGER),
+        ("KernelTime", LARGE_INTEGER),
+        ("ImageName", UNICODE_STRING),
+        ("BasePriority", ULONG),
+        ("UniqueProcessId", HANDLE),
+        ("InheritedFromUniqueProcessId", HANDLE),
+        ("HandleCount", ULONG),
+        ("SessionId", ULONG),
+        ("UniqueProcessKey", ULONG_PTR),
+        ("PeakVirtualSize", SIZE_T),
+        ("VirtualSize", SIZE_T),
+        ("PageFaultCount", ULONG),
+        ("PeakWorkingSetSize", SIZE_T),
+        ("WorkingSetSize", SIZE_T),
+        ("QuotaPeakPagedPoolUsage", SIZE_T),
+        ("QuotaPagedPoolUsage", SIZE_T),
+        ("QuotaPeakNonPagedPoolUsage", SIZE_T),
+        ("QuotaNonPagedPoolUsage", SIZE_T),
+        ("PagefileUsage", SIZE_T),
+        ("PeakPagefileUsage", SIZE_T),
+        ("PrivatePageCount", SIZE_T),
+        ("ReadOperationCount", LARGE_INTEGER),
+        ("WriteOperationCount", LARGE_INTEGER),
+        ("OtherOperationCount", LARGE_INTEGER),
+        ("ReadTransferCount", LARGE_INTEGER),
+        ("WriteTransferCount", LARGE_INTEGER),
+        ("OtherTransferCount", LARGE_INTEGER),
+        ("Threads", SYSTEM_THREAD_INFORMATION * 1),
+    ]
+
+
+class WINDOWINFO(ctypes.Structure):
+    _fields_ = [
+        ("cbSize", DWORD),
+        ("rcWindow", RECT),
+        ("rcClient", RECT),
+        ("dwStyle", DWORD),
+        ("dwExStyle", DWORD),
+        ("dwWindowStatus", DWORD),
+        ("cxWindowBorders", UINT),
+        ("cyWindowBorders", UINT),
+        ("atomWindowType", ATOM),
+        ("wCreatorVersion", WORD),
+    ]
+
+
 __all__ = [
     "BOOL",
-    "DWORD",
-    "HANDLE",
-    "LPWSTR",
-    "PHANDLE",
-    "PULONG",
-    "ULONG",
-    "USHORT",
-    "PVOID",
-    "NTSTATUS",
-    "NULL",
-    "UNICODE_STRING",
-    "PUNICODE_STRING",
-    "OBJECT_DIRECTORY_INFORMATION",
-    "ProcessToken",
-    "ProcessAccess",
-    "ErrorCode",
+    "CLIENT_ID",
     "DuplicateHandleFlags",
-    "SYSTEM_INFORMATION_CLASS",
-    "OBJECT_INFORMATION_CLASS",
+    "DWORD",
+    "ErrorCode",
     "FILE_INFORMATION_CLASS",
-    "SYSTEM_HANDLE_TABLE_ENTRY_INFO_EX",
-    "SYSTEM_HANDLE_INFORMATION_EX",
-    "PUBLIC_OBJECT_TYPE_INFORMATION",
-    "IO_STATUS_BLOCK_DUMMYUNIONNAME",
+    "Handle",
+    "HANDLE",
     "IO_STATUS_BLOCK",
+    "IO_STATUS_BLOCK_DUMMYUNIONNAME",
+    "LARGE_INTEGER",
+    "LPDWORD",
+    "LPVOID",
+    "LPWSTR",
+    "LSA_OBJECT_ATTRIBUTES",
+    "LSA_REFERENCED_DOMAIN_LIST" "LSA_TRANSLATED_NAME",
+    "LSA_TRUST_INFORMATION",
     "LUID",
     "LUID_AND_ATTRIBUTES",
+    "NTSTATUS",
+    "NULL",
+    "OBJECT_DIRECTORY_INFORMATION",
+    "OBJECT_INFORMATION_CLASS",
+    "PHANDLE",
+    "PLSA_REFERENCED_DOMAIN_LIST",
+    "PLSA_TRANSLATED_NAME",
+    "ProcessAccess",
+    "PROCESS_BASIC_INFORMATION" "PROCESS_EXTENDED_BASIC_INFORMATION",
+    "PROCESSINFOCLASS",
+    "PROCESS_SESSION_INFORMATION" "ProcessToken",
+    "PUBLIC_OBJECT_TYPE_INFORMATION",
+    "PULONG",
+    "PUNICODE_STRING",
+    "PVOID",
+    "SID_AND_ATTRIBUTES",
+    "SID_NAME_USE",
+    "SYSTEM_HANDLE_INFORMATION_EX",
+    "SYSTEM_HANDLE_TABLE_ENTRY_INFO_EX",
+    "SYSTEM_INFORMATION_CLASS",
+    "SYSTEM_PROCESS_INFORMATION",
+    "SYSTEM_THREAD_INFORMATION",
     "TOKEN_PRIVILEGES",
-    "Handle",
+    "TOKEN_USER",
+    "ULONG",
+    "UNICODE_STRING",
+    "USHORT",
     "WCHAR",
-    "LPVOID",
-    "LPDWORD",
+    "WTS_SESSION_INFOW",
 ]

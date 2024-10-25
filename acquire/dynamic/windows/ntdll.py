@@ -142,6 +142,14 @@ CloseHandle = ctypes.windll.kernel32.CloseHandle
 CloseHandle.argtypes = [HANDLE]
 CloseHandle.restype = BOOL
 
+NtQueryInformationProcess = ntdll.NtQueryInformationProcess
+NtQueryInformationProcess.argtypes = [HANDLE, DWORD, LPVOID, ULONG, PULONG]
+NtQueryInformationProcess.restype = NTSTATUS
+
+NtQuerySystemInformation = ntdll.NtQuerySystemInformation
+NtQuerySystemInformation.argtypes = [DWORD, LPVOID, ULONG, PULONG]
+NtQuerySystemInformation.restype = NTSTATUS
+
 
 def initialize_object_attributes(
     destination_attributes: OBJECT_ATTRIBUTES,

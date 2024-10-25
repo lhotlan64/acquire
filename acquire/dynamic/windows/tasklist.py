@@ -1,26 +1,47 @@
 from __future__ import annotations
 
 import ctypes
-from ctypes.wintypes import (
-    BOOL,
-    DWORD,
-    HANDLE,
-    LPDWORD,
-    LPVOID,
-    LPWSTR,
-    PHANDLE,
-    PULONG,
-    ULONG,
-    USHORT,
+from ctypes.wintypes import DWORD, HANDLE, LPVOID, ULONG
+
+from acquire.dynamic.windows.advapi32 import (
+    GetTokenInformation,
+    LsaClose,
+    LsaFreeMemory,
+    LsaLookupSids,
+    LsaOpenPolicy,
+    OpenProcessToken,
 )
-from enum import IntEnum
-from typing import ClassVar
-
-NTSTATUS = ULONG
-ULONG_PTR = ctypes.c_size_t
-SIZE_T = ctypes.c_size_t
-PDWORD = ctypes.POINTER(DWORD)
-
+from acquire.dynamic.windows.kernel32 import CloseHandle, OpenProcess
+from acquire.dynamic.windows.ntdll import (
+    NtQueryInformationProcess,
+    NtQuerySystemInformation,
+)
+from acquire.dynamic.windows.types import (
+    BOOL,
+    HWND,
+    LPARAM,
+    LSA_OBJECT_ATTRIBUTES,
+    LSA_TRUST_INFORMATION,
+    NULL,
+    PLSA_REFERENCED_DOMAIN_LIST,
+    PLSA_TRANSLATED_NAME,
+    PROCESS_EXTENDED_BASIC_INFORMATION,
+    PROCESSINFOCLASS,
+    SID_NAME_USE,
+    SYSTEM_PROCESS_INFORMATION,
+    TOKEN_USER,
+    WINDOWINFO,
+    WTS_SESSION_INFOW,
+)
+from acquire.dynamic.windows.user32 import (
+    EnumChildWindows,
+    GetParent,
+    GetWindowInfo,
+    GetWindowThreadProcessId,
+    InternalGetWindowText,
+    IsWindowVisible,
+)
+from acquire.dynamic.windows.wtsapi32 import WTSEnumerateSessionsW, WTSFreeMemory
 
 CURRENT_PROCESS = HANDLE(-1)
 POLICY_LOOKUP_NAMES = 0x00000800
@@ -38,322 +59,106 @@ SYSTEM_PROCESS_ID = 4
 SYSTEM_IDLE_PROCESS_NAME = "System Idle Process"
 
 
-class PROCESSINFOCLASS(IntEnum):
-    PROCESSBASICINFORMATION = 0
-    PROCESSVMCOUNTERS = 3
-    PROCESSTIMES = 4
-    PROCESSSESSIONINFORMATION = 24
-    PROCESSIMAGEFILENAME = 27
-    PROCESSWINDOWINFORMATION = 50
-
-
-class SID_NAME_USE(IntEnum):
-    USER = 1
-    GROUP = 2
-    DOMAIN = 3
-    ALIAS = 4
-    WELLKNOWNGROUP = 5
-    DELETEDACCOUNT = 6
-    INVALID = 7
-    UNKNOWN = 8
-    COMPUTER = 9
-    LABEL = 10
-    LOGONSESSION = 11
-
-
-class LUID(ctypes.Structure):
-    _fields_: ClassVar[list[tuple[str, type]]] = [
-        ("LowPart", DWORD),
-        ("HighPart", DWORD),
-    ]
-
-
-class LUID_AND_ATTRIBUTES(ctypes.Structure):
-    _fields_: ClassVar[list[tuple[str, type]]] = [
-        ("Luid", LUID),
-        ("Attributes", DWORD),
-    ]
-
-
-class TOKEN_PRIVILEGES(ctypes.Structure):
-    _fields_: ClassVar[list[tuple[str, type]]] = [
-        ("PrivilegeCount", DWORD),
-        ("Privileges", LUID_AND_ATTRIBUTES * 1),
-    ]
-
-
-class WTS_SESSION_INFOW(ctypes.Structure):
-    _fields_: ClassVar[list[tuple[str, type]]] = [
-        ("SessionId", DWORD),
-        ("Padding", DWORD),
-        ("pWinStationName", LPWSTR),
-        ("State", DWORD),
-    ]
-
-
-class UNICODE_STRING(ctypes.Structure):
-    _fields_: ClassVar[list[tuple[str, type]]] = [
-        ("Length", USHORT),
-        ("MaximumLength", USHORT),
-        ("Buffer", LPWSTR),
-    ]
-
-
-class SID_AND_ATTRIBUTES(ctypes.Structure):
-    _fields_: ClassVar[list[tuple[str, type]]] = [
-        ("Sid", LPVOID),
-        ("Attributes", DWORD),
-    ]
-
-
-class TOKEN_USER(ctypes.Structure):
-    _fields_: ClassVar[list[tuple[str, type]]] = [
-        ("User", SID_AND_ATTRIBUTES),
-    ]
-
-
-class LSA_OBJECT_ATTRIBUTES(ctypes.Structure):
-    _fields_: ClassVar[list[tuple[str, type]]] = [
-        ("Length", ULONG),
-        ("Padding", ULONG),
-        ("RootDirectory", HANDLE),
-        ("ObjectName", ctypes.POINTER(UNICODE_STRING)),
-        ("Attributes", ULONG),
-        ("Padding2", ULONG),
-        ("SecurityDescriptor", LPVOID),
-        ("SecurityQualityOfService", LPVOID),
-    ]
-
-
-class PROCESS_BASIC_INFORMATION(ctypes.Structure):
-    _fields_: ClassVar[list[tuple[str, type]]] = [
-        ("ExitStatus", NTSTATUS),
-        ("PebBaseAddress", LPVOID),
-        ("AffinityMask", ULONG_PTR),
-        ("BasePriority", ULONG),
-        ("UniqueProcessId", HANDLE),
-        ("InheritedFromUniqueProcessId", HANDLE),
-    ]
-
-
-class PROCESS_EXTENDED_BASIC_INFORMATION(ctypes.Structure):
-    _fields_: ClassVar[list[tuple[str, type]]] = [
-        ("Size", SIZE_T),
-        ("BasicInfo", PROCESS_BASIC_INFORMATION),
-        ("Flags", ULONG),  # of interest is IsFrozen (bit 4)
-    ]
-
-
-class PROCESS_SESSION_INFORMATION(ctypes.Structure):
-    _fields_: ClassVar[list[tuple[str, type]]] = [
-        ("SessionId", ULONG),
-    ]
-
-
-class LSA_TRANSLATED_NAME(ctypes.Structure):
-    _fields_: ClassVar[list[tuple[str, type]]] = [
-        ("Use", ULONG),
-        ("Name", UNICODE_STRING),
-        ("DomainIndex", ULONG),
-    ]
-
-
-class LSA_TRUST_INFORMATION(ctypes.Structure):
-    _fields_: ClassVar[list[tuple[str, type]]] = [
-        ("Name", UNICODE_STRING),
-        ("Sid", LPVOID),
-    ]
-
-
-class LSA_REFERENCED_DOMAIN_LIST(ctypes.Structure):
-    _fields_: ClassVar[list[tuple[str, type]]] = [
-        ("Entries", ULONG),
-        ("Domains", ctypes.POINTER(LSA_TRUST_INFORMATION) * 1),
-    ]
-
-
-class LARGE_INTEGER(ctypes.Structure):
-    _fields_: ClassVar[list[tuple[str, type]]] = [
-        ("LowPart", DWORD),
-        ("HighPart", DWORD),
-    ]
-
-
-class CLIENT_ID(ctypes.Structure):
-    _fields_: ClassVar[list[tuple[str, type]]] = [
-        ("UniqueProcess", HANDLE),
-        ("UniqueThread", HANDLE),
-    ]
-
-
-class SYSTEM_THREAD_INFORMATION(ctypes.Structure):
-    _fields_: ClassVar[list[tuple[str, type]]] = [
-        ("KernelTime", LARGE_INTEGER),
-        ("UserTime", LARGE_INTEGER),
-        ("CreateTime", LARGE_INTEGER),
-        ("WaitTime", ULONG),
-        ("StartAddress", LPVOID),
-        ("ClientId", CLIENT_ID),
-        ("Priority", ULONG),
-        ("BasePriority", ULONG),
-        ("ContextSwitches", ULONG),
-        ("ThreadState", ULONG),
-        ("WaitReason", ULONG),
-    ]
-
-
-class SYSTEM_PROCESS_INFORMATION(ctypes.Structure):
-    _fields_: ClassVar[list[tuple[str, type]]] = [
-        ("NextEntryOffset", ULONG),
-        ("NumberOfThreads", ULONG),
-        ("WorkingSetPrivateSize", LARGE_INTEGER),
-        ("HardFaultCount", ULONG),
-        ("NumberOfThreadsHighWatermark", ULONG),
-        ("CycleTime", ULONG),
-        ("Padding", ULONG),  # add padding to fix structure alignment
-        ("CreateTime", LARGE_INTEGER),
-        ("UserTime", LARGE_INTEGER),
-        ("KernelTime", LARGE_INTEGER),
-        ("ImageName", UNICODE_STRING),
-        ("BasePriority", ULONG),
-        ("UniqueProcessId", HANDLE),
-        ("InheritedFromUniqueProcessId", HANDLE),
-        ("HandleCount", ULONG),
-        ("SessionId", ULONG),
-        ("UniqueProcessKey", ULONG_PTR),
-        ("PeakVirtualSize", SIZE_T),
-        ("VirtualSize", SIZE_T),
-        ("PageFaultCount", ULONG),
-        ("PeakWorkingSetSize", SIZE_T),
-        ("WorkingSetSize", SIZE_T),
-        ("QuotaPeakPagedPoolUsage", SIZE_T),
-        ("QuotaPagedPoolUsage", SIZE_T),
-        ("QuotaPeakNonPagedPoolUsage", SIZE_T),
-        ("QuotaNonPagedPoolUsage", SIZE_T),
-        ("PagefileUsage", SIZE_T),
-        ("PeakPagefileUsage", SIZE_T),
-        ("PrivatePageCount", SIZE_T),
-        ("ReadOperationCount", LARGE_INTEGER),
-        ("WriteOperationCount", LARGE_INTEGER),
-        ("OtherOperationCount", LARGE_INTEGER),
-        ("ReadTransferCount", LARGE_INTEGER),
-        ("WriteTransferCount", LARGE_INTEGER),
-        ("OtherTransferCount", LARGE_INTEGER),
-        ("Threads", SYSTEM_THREAD_INFORMATION * 1),
-    ]
-
-
-PLSA_TRANSLATED_NAME = ctypes.POINTER(LSA_TRANSLATED_NAME)
-PLSA_REFERENCED_DOMAIN_LIST = ctypes.POINTER(LSA_REFERENCED_DOMAIN_LIST)
-
-advapi32 = ctypes.WinDLL("advapi32.dll")
-kernel32 = ctypes.WinDLL("kernel32.dll")
-ntdll = ctypes.WinDLL("ntdll.dll")
-wtsapi32 = ctypes.WinDLL("wtsapi32.dll")
-
-OpenProcessToken = advapi32.OpenProcessToken
-OpenProcessToken.argtypes = [HANDLE, DWORD, PHANDLE]
-OpenProcessToken.restype = BOOL
-
-GetTokenInformation = advapi32.GetTokenInformation
-GetTokenInformation.argtypes = [HANDLE, ULONG, LPVOID, DWORD, PDWORD]
-GetTokenInformation.restype = BOOL
-
-LookupPrivilegeValueW = advapi32.LookupPrivilegeValueW
-LookupPrivilegeValueW.argtypes = [LPVOID, LPWSTR, LPVOID]
-LookupPrivilegeValueW.restype = BOOL
-
-AdjustTokenPrivileges = advapi32.AdjustTokenPrivileges
-AdjustTokenPrivileges.argtypes = [HANDLE, BOOL, ctypes.POINTER(TOKEN_PRIVILEGES), DWORD, LPVOID, PDWORD]
-AdjustTokenPrivileges.restype = BOOL
-
-LsaOpenPolicy = advapi32.LsaOpenPolicy
-LsaOpenPolicy.argtypes = [LPVOID, LPVOID, DWORD, HANDLE]
-LsaOpenPolicy.restype = NTSTATUS
-
-LsaLookupSids = advapi32.LsaLookupSids
-LsaLookupSids.argtypes = [
-    HANDLE,
-    ULONG,
-    LPVOID,
-    ctypes.POINTER(PLSA_REFERENCED_DOMAIN_LIST),
-    ctypes.POINTER(PLSA_TRANSLATED_NAME),
-]
-LsaLookupSids.restype = NTSTATUS
-
-LsaFreeMemory = advapi32.LsaFreeMemory
-LsaFreeMemory.argtypes = [LPVOID]
-LsaFreeMemory.restype = NTSTATUS
-
-LsaClose = advapi32.LsaClose
-LsaClose.argtypes = [HANDLE]
-LsaClose.restype = NTSTATUS
-
-OpenProcess = kernel32.OpenProcess
-OpenProcess.argtypes = [DWORD, BOOL, DWORD]
-OpenProcess.restype = HANDLE
-
-CloseHandle = kernel32.CloseHandle
-CloseHandle.argtypes = [HANDLE]
-CloseHandle.restype = BOOL
-
-GetProcessId = kernel32.GetProcessId
-GetProcessId.argtypes = [HANDLE]
-GetProcessId.restype = DWORD
-
-try:
-    EnumProcesses = kernel32.EnumProcesses
-except AttributeError:
-    EnumProcesses = kernel32.K32EnumProcesses
-EnumProcesses.argtypes = [LPVOID, DWORD, LPDWORD]
-EnumProcesses.restype = BOOL
-
-WTSEnumerateSessionsW = wtsapi32.WTSEnumerateSessionsW
-WTSEnumerateSessionsW.argtypes = [HANDLE, DWORD, DWORD, LPVOID, LPDWORD]
-WTSEnumerateSessionsW.restype = BOOL
-
-WTSFreeMemory = wtsapi32.WTSFreeMemory
-WTSFreeMemory.argtypes = [LPVOID]
-WTSFreeMemory.restype = None
-
-NtQueryInformationProcess = ntdll.NtQueryInformationProcess
-NtQueryInformationProcess.argtypes = [HANDLE, DWORD, LPVOID, ULONG, PULONG]
-NtQueryInformationProcess.restype = NTSTATUS
-
-NtQuerySystemInformation = ntdll.NtQuerySystemInformation
-NtQuerySystemInformation.argtypes = [DWORD, LPVOID, ULONG, PULONG]
-NtQuerySystemInformation.restype = NTSTATUS
-
-
 class Process:
     def __init__(
         self,
         pid: int,
         image_name: str,
         sess_id: int,
-        sess_name: str,
-        user: str,
-        domain: str,
-        state: str,
         mem_usage: int,
         ticks: int,
+        sess_name: str | None,
+        user: str | None,
+        domain: str | None,
+        state: str | None,
+        window_title: str | None,
     ):
         self.pid = pid
         self.image_name = image_name
+        self.state = state
         self.session_id = sess_id
+        self.cpu_ticks = ticks
         self.session_name = sess_name
         self.user = user
         self.domain = domain
-        self.state = state
         self.memory_usage = mem_usage
-        self.cpu_ticks = ticks
+        self.window_title = window_title
 
     def __str__(self) -> str:
         return (
             f"Process(pid={self.pid}, img={self.image_name}, user={self.domain}\\{self.user}, "
             f"sess={self.session_name} ({self.session_id}), mem={self.memory_usage}, status={self.state}, "
-            f"time={self.cpu_ticks})"
+            f"time={self.cpu_ticks}, title={self.window_title})"
         )
+
+
+class MainWindowContext(ctypes.Structure):
+    _fields_ = [
+        ("ProcessId", HANDLE),
+        ("Window", HANDLE),
+    ]
+
+
+@ctypes.WINFUNCTYPE(BOOL, HWND, LPARAM)
+def get_process_main_window_callback(hwnd: HWND, lparam: LPARAM) -> BOOL:
+    ctx = ctypes.cast(lparam, ctypes.POINTER(MainWindowContext)).contents
+
+    if IsWindowVisible(hwnd) is False:
+        return True
+
+    process_id = DWORD(0)
+    GetWindowThreadProcessId(hwnd, ctypes.byref(process_id))
+
+    if process_id.value != ctx.ProcessId:
+        # it's not the process we're looking for
+        return True
+
+    parent = GetParent(hwnd)
+    if parent is not None and IsWindowVisible(parent):
+        # there's a visible parent so we're not the main window
+        return True
+
+    window_text = ctypes.create_unicode_buffer(32)
+    if InternalGetWindowText(hwnd, window_text, len(window_text)) == 0:
+        # the window does not have a title
+        return True
+
+    window_info = WINDOWINFO()
+    window_info.cbSize = ctypes.sizeof(WINDOWINFO)
+
+    if not GetWindowInfo(hwnd, ctypes.byref(window_info)):
+        return True
+
+    WS_DLGFRAME = 0x00400000
+    if window_info.dwStyle & WS_DLGFRAME:
+        ctx.Window = hwnd
+        return False
+
+    return True
+
+
+def get_process_main_window(process_id: DWORD, process_handle: HANDLE) -> HWND:
+    ctx = MainWindowContext()
+    ctypes.memset(ctypes.addressof(ctx), 0, ctypes.sizeof(ctx))
+
+    ctx.ProcessId = process_id
+    ctx.Window = None
+
+    lparam = LPARAM(ctypes.addressof(ctx))
+    EnumChildWindows(NULL, get_process_main_window_callback, lparam)
+
+    return ctx.Window
+
+
+def get_process_window_title(process_id: DWORD, process_handle: HANDLE) -> str | None:
+    hwnd = get_process_main_window(process_id, process_handle)
+    if hwnd is None:
+        return None
+
+    buffer = ctypes.create_unicode_buffer(256)
+    InternalGetWindowText(hwnd, buffer, 255)
+
+    return str(buffer.value)
 
 
 def get_session_name_by_id(session_id: int) -> str | None:
@@ -493,6 +298,7 @@ def get_process_information(process: SYSTEM_PROCESS_INFORMATION) -> Process | No
     if process_handle is not None and process_id != SYSTEM_PROCESS_ID:
         user_context = get_process_user_info(process_handle)
         process_state = get_process_state(process_handle)
+        window_title = get_process_window_title(process_id, process_handle)
         CloseHandle(process_handle)
     else:
         if process_id in [SYSTEM_IDLE_PROCESS_ID, SYSTEM_PROCESS_ID]:
@@ -501,17 +307,19 @@ def get_process_information(process: SYSTEM_PROCESS_INFORMATION) -> Process | No
         else:
             user_context = ("<unknown>", "<unknown>")
             process_state = "Unknown"
+        window_title = None
 
     return Process(
         pid=process_id,
         image_name=image_name,
         sess_id=session_id,
+        mem_usage=working_set_size,
+        ticks=total_ticks,
+        state=process_state,
         sess_name=session_name,
         user=user_context[0],
         domain=user_context[1],
-        state=process_state,
-        mem_usage=working_set_size,
-        ticks=total_ticks,
+        window_title=window_title,
     )
 
 
@@ -575,6 +383,7 @@ def format_active_processes_as_csv(processes: list[Process]) -> str:
         domain_and_user = domain + "\\" + user
         working_set = f"{process.memory_usage / 1024.0:.2f} K"
         cpu_time = ticks_to_timespan(process.cpu_ticks)
+        window_title = process.window_title if process.window_title else ""
 
         items = [
             process.image_name,
@@ -585,7 +394,7 @@ def format_active_processes_as_csv(processes: list[Process]) -> str:
             process.state,
             domain_and_user,
             cpu_time,
-            "",  # we don't support the window title as of yet
+            window_title,
         ]
 
         return ",".join([quoted(item) for item in items])
@@ -606,3 +415,8 @@ def format_active_processes_as_csv(processes: list[Process]) -> str:
     rows = "\n".join(formatter(process) for process in processes)
 
     return header + "\n" + rows
+
+
+if __name__ == "__main__":
+    asd = get_active_process_list()
+    [print(p) for p in asd]
