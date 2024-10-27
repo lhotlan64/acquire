@@ -5,6 +5,7 @@ from ctypes.wintypes import (
     BOOL,
     DWORD,
     HANDLE,
+    LONG,
     LPDWORD,
     LPVOID,
     LPWSTR,
@@ -13,6 +14,7 @@ from ctypes.wintypes import (
     ULONG,
     USHORT,
     WCHAR,
+    WORD,
 )
 from enum import IntEnum
 
@@ -21,6 +23,7 @@ NTSTATUS = ULONG
 NULL = None
 
 ULONG_PTR = ctypes.c_size_t
+UBYTE = ctypes.c_ubyte
 
 
 class ProcessToken(IntEnum):
@@ -234,6 +237,113 @@ class OBJECT_DIRECTORY_INFORMATION(ctypes.Structure):
     @property
     def type_name(self) -> str:
         return str(self.TypeName)
+
+
+class WTS_INFO_CLASS(IntEnum):
+    WTSInitialProgram = 0
+    WTSApplicationName = 1
+    WTSWorkingDirectory = 2
+    WTSOEMId = 3
+    WTSSessionId = 4
+    WTSUserName = 5
+    WTSWinStationName = 6
+    WTSDomainName = 7
+    WTSConnectState = 8
+    WTSClientBuildNumber = 9
+    WTSClientName = 10
+    WTSClientDirectory = 11
+    WTSClientProductId = 12
+    WTSClientHardwareId = 13
+    WTSClientAddress = 14
+    WTSClientDisplay = 15
+    WTSClientProtocolType = 16
+    WTSIdleTime = 17
+    WTSLogonTime = 18
+    WTSIncomingBytes = 19
+    WTSOutgoingBytes = 20
+    WTSIncomingFrames = 21
+    WTSOutgoingFrames = 22
+    WTSClientInfo = 23
+    WTSSessionInfo = 24
+    WTSSessionInfoEx = 25
+    WTSConfigInfo = 26
+    WTSValidationInfo = 27
+    WTSSessionAddressV4 = 28
+    WTSIsRemoteSession = 29
+
+
+class WTS_CONNECTSTATE_CLASS(IntEnum):
+    WTSActive = 0
+    WTSConnected = 1
+    WTSConnectQuery = 2
+    WTSShadow = 3
+    WTSDisconnected = 4
+    WTSIdle = 5
+    WTSListen = 6
+    WTSReset = 7
+    WTSDown = 8
+    WTSInit = 9
+
+
+class LARGE_INTEGER(ctypes.Structure):
+    _fields_ = [
+        ("LowPart", ULONG),
+        ("HighPart", LONG),
+    ]
+
+
+class SYSTEMTIME(ctypes.Structure):
+    _fields_ = [
+        ("wYear", WORD),
+        ("wMonth", WORD),
+        ("wDayOfWeek", WORD),
+        ("wDay", WORD),
+        ("wHour", WORD),
+        ("wMinute", WORD),
+        ("wSecond", WORD),
+        ("wMilliseconds", WORD),
+    ]
+
+
+class WTSINFOW(ctypes.Structure):
+    _fields_ = [
+        ("State", DWORD),
+        ("SessionId", DWORD),
+        ("IncomingBytes", DWORD),
+        ("OutgoingBytes", DWORD),
+        ("IncomingFrames", DWORD),
+        ("OutgoingFrames", DWORD),
+        ("IncomingCompressedBytes", DWORD),
+        ("OutgoingCompressedBytes", DWORD),
+        ("WinStationName", WCHAR * 32),
+        ("Domain", WCHAR * 17),
+        ("UserName", WCHAR * 21),
+        ("Padding", DWORD),  # padding to fix structure alignment
+        ("ConnectTime", LARGE_INTEGER),
+        ("DisconnectTime", LARGE_INTEGER),
+        ("LastInputTime", LARGE_INTEGER),
+        ("LogonTime", LARGE_INTEGER),
+        ("CurrentTime", LARGE_INTEGER),
+    ]
+
+
+class WTS_SESSION_INFOW(ctypes.Structure):
+    _fields_ = [
+        ("SessionId", DWORD),
+        ("Padding", DWORD),
+        ("pWinStationName", LPWSTR),
+        ("State", DWORD),
+    ]
+
+
+class WTS_CLIENT_ADDRESS(ctypes.Structure):
+    _fields_ = [
+        ("AddressFamily", DWORD),
+        ("Address", UBYTE * 20),
+    ]
+
+
+PWTS_SESSION_INFOW = ctypes.POINTER(WTS_SESSION_INFOW)
 
 
 __all__ = [
